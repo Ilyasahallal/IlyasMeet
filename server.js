@@ -1,23 +1,28 @@
 const express = require('express');
-const http = require('http');
+const https = require('https');
+const fs = require('fs');
 const socketIo = require('socket.io');
 
 const app = express();
-const server = http.createServer(app);
+
+const options = {
+  key: fs.readFileSync('key.pem'),
+  cert: fs.readFileSync('cert.pem'),
+};
+
+const server = https.createServer(options, app);
 const io = socketIo(server);
 
 app.use(express.static('public'));
 
-// Gestion des connexions
 io.on('connection', (socket) => {
   console.log('Un utilisateur s\'est connecté:', socket.id);
-  
+
   // Rejoindre une salle
   socket.on('join', (roomId) => {
     const roomClients = io.sockets.adapter.rooms.get(roomId) || { size: 0 };
     const numberOfClients = roomClients.size;
 
-    // Limiter à 2 personnes maximum par salle
     if (numberOfClients === 0) {
       console.log(`Création de la salle ${roomId} et attente du participant`);
       socket.join(roomId);
@@ -46,6 +51,12 @@ io.on('connection', (socket) => {
     socket.to(roomId).emit('ice_candidate', candidate, socket.id);
   });
 
+  // Nouveau gestionnaire de messages de chat
+  socket.on('chat_message', (roomId, message) => {
+    // Relayer le message à tous les autres participants de la salle
+    socket.to(roomId).emit('chat_message', message);
+  });
+
   // Gérer la déconnexion
   socket.on('disconnect', () => {
     console.log('Un utilisateur s\'est déconnecté:', socket.id);
@@ -54,5 +65,5 @@ io.on('connection', (socket) => {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`Serveur démarré sur le port ${PORT}`);
+  console.log(`Serveur HTTPS démarré sur le port ${PORT}`);
 });
